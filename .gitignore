@@ -1,5 +1,4 @@
-# editor configuration 
 *.nix
 .idx
-
 /target
+*.txt
