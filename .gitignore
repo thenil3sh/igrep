@@ -3,3 +3,6 @@
 .idx
 
 /target
+
+#some files i used for testing
+*.txt
