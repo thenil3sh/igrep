@@ -14,5 +14,5 @@ fn main() {
 
 
     let oreo = fs::read_to_string(address).unwrap();
-    println!("{oreo}");
+    
 }
