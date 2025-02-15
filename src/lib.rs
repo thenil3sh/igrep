@@ -32,45 +32,52 @@ impl<'a> Config<'a> {
             file: "",
         }
     }
-    pub fn from(args: &'a Vec<String>) -> Result<Self, ErrType> {
-        let mut config = Self::new();
+    pub fn from(args: &'a Vec<String>) -> Result<Self, ErrType<'a>> {
+        let mut config: Config<'a> = Self::new();
+        let mut result : Option<ErrType> = None;
+
         for i in 1..args.len() {
-            if let Err(_) = config.push(&args[i]) {
-                return Err(TooMany);
-            }
+            config.push(&args[i]);
+            ////////////
+        } 
+
+        if !result.is_none(){
+            return Err(result.unwrap());
         }
         if config.query == Query::new() {
             return Err(NoArgs);
-        }
+        } 
 
         Ok(config)
     }
 
-    fn push(&mut self, arguement : &'a String) -> Result<(), ErrType> {
+    fn push(&mut self, arguement: &'a String) -> Option<ErrType> {
         let query = &mut self.query;
+        let mut args = vec![];
         match arguement.as_str() {
-            "--help" => query.search = true,
-            "--search" => query.search = true,
-            "--case_sensitive" => query.case_sensitive = true,
-            "--find" => query.find = true,
-            "--verbose" => query.verbose = true,
-            "--quiet" => query.quiet = true,
-            "--read" => query.read = true,
-            x => {
+            "--help"            => query.search = true,
+            "--search"          => query.search = true,
+            "--case_sensitive"  => query.case_sensitive = true,
+            "--find"            => query.find = true,
+            "--verbose"         => query.verbose = true,
+            "--quiet"           => query.quiet = true,
+            "--read"            => query.read = true,
+            x             => {
                 query.help = false;
+                args.push(x);
                 if x.contains("--") {
-                    return Err(TooMany);
+                    return Some(UnknownArgs(x));
                 } else if exists(x) && self.file.is_empty() {
                     self.file = x;
                 } else if self.search_string.is_empty() {
                     self.search_string = x;
                 } else {
                     query.help = true;
-                    return Err(TooMany);
+                    return Some(TooManyArgs(args));
                 }
             }
         }
-        Ok(())
+        None
     }
 }
 
@@ -88,15 +95,13 @@ impl Query {
     }
 }
 
-#[derive(Debug)]
-pub enum ErrType {
-    TooMany,
+#[derive(Debug, Clone)]
+pub enum ErrType<'a> {
+    TooManyArgs (Vec<&'a str>),
     NoArgs,
+    UnknownArgs(&'a str),
 }
 use ErrType::*;
-
-
-
 
 #[cfg(test)]
 mod test {
@@ -122,7 +127,7 @@ mod test {
             panic!();
         }
     }
-    
+
     #[test]
     fn config_from_too_many_args() {
         let arg_vec = vec![
@@ -144,8 +149,7 @@ mod test {
 
         let config = Config::from(&arg_vec).unwrap();
         assert_eq!(config.file, "some.txt"); // fails if there's no such file
-        assert_eq!(config.search_string, "");// becomes some.txt if there's no such file
+        assert_eq!(config.search_string, ""); // becomes some.txt if there's no such file
         assert!(!config.query.help);
     }
-
 }
