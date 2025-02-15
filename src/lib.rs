@@ -1,97 +1,151 @@
-// use std::env;
+use std::path::Path;
 
-#[derive (Debug, PartialEq)]
-enum Querry {
-    Find,
-    Read,
-    Has,
-    Verbose,
-    Quiet,
-    Help,
+fn exists(path: impl AsRef<Path>) -> bool {
+    Path::new(path.as_ref()).exists()
 }
-use Querry::*;
 
-
-// Suggested code may be subject to a license. Learn more: ~LicenseLog:4843641.
-#[derive (Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Config<'a> {
-    current_dir: &'a str ,
-    query: Vec<Querry>,
-    string: &'a str,
+    // current_dir : &'a str,
+    query: Query,
+    search_string: &'a str,
+    file: &'a str,
 }
 
-impl <'a> Config <'a> {
-    pub fn new() -> Config<'a> {
-        Config {
-            current_dir: "",
-            query: Vec::new(),
-            string: "",
+#[derive(Debug, PartialEq)]
+struct Query {
+    help: bool,
+    read: bool,
+    search: bool,
+    find: bool,
+    verbose: bool,
+    quiet: bool,
+    case_sensitive: bool,
+}
+
+impl<'a> Config<'a> {
+    fn new() -> Self {
+        Self {
+            // current_dir : "",
+            query: Query::new(),
+            search_string: "",
+            file: "",
         }
     }
-}
+    pub fn from(args: &'a Vec<String>) -> Result<Self, ErrType> {
+        let mut config = Self::new();
+        for i in 1..args.len() {
+            if let Err(_) = config.push(&args[i]) {
+                return Err(TooMany);
+            }
+        }
+        if config.query == Query::new() {
+            return Err(NoArgs);
+        }
 
-impl <'a> From<&'a Vec<String>> for Config<'a> {
+        Ok(config)
+    }
 
-    fn from(args: &'a Vec<String>) -> Config<'a> {
-
-        let mut config: Config<'a> = Config::new();
-        config.current_dir = args[0].as_str();
-
-        for index in 1..args.len() {
-            if args[index].contains("--") {
-                config.query.push(match args[index].as_str() {
-                    "--help" => Help,
-                    "--find" => Find,
-                    "--read" => Read,
-                    "--has" => Has,
-                    "--verbose" => Verbose,
-                    "--quiet" => Quiet,
-                    x => {
-                        eprintln!("Unknown arguement '{x}'");
-                        std::process::exit(1);
-                    }
-                });
-            } else {
-                if config.string == "" {
-                    config.string = &args[index];
+    fn push(&mut self, arguement : &'a String) -> Result<(), ErrType> {
+        let query = &mut self.query;
+        match arguement.as_str() {
+            "--help" => query.search = true,
+            "--search" => query.search = true,
+            "--case_sensitive" => query.case_sensitive = true,
+            "--find" => query.find = true,
+            "--verbose" => query.verbose = true,
+            "--quiet" => query.quiet = true,
+            "--read" => query.read = true,
+            x => {
+                query.help = false;
+                if x.contains("--") {
+                    return Err(TooMany);
+                } else if exists(x) && self.file.is_empty() {
+                    self.file = x;
+                } else if self.search_string.is_empty() {
+                    self.search_string = x;
                 } else {
-                    eprintln!("Unknown arguement '{}'", args[index]);
-                    std::process::exit(1);
+                    query.help = true;
+                    return Err(TooMany);
                 }
             }
         }
-        if config.string.is_empty() && config.query.is_empty() {
-            config.query.push(Help);
-        }
-        config
+        Ok(())
     }
 }
 
+impl Query {
+    fn new() -> Self {
+        Self {
+            help: true,
+            read: false,
+            search: false,
+            find: false,
+            verbose: false,
+            quiet: false,
+            case_sensitive: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ErrType {
+    TooMany,
+    NoArgs,
+}
+use ErrType::*;
+
+
+
+
 #[cfg(test)]
 mod test {
-
-    use super::{Config, Querry};
-
-    #[test]
-    fn parses_a_normal_arguement() {
-        let args = vec![String::from("./"), String::from("--help")];
-
-        assert_eq!(Config{current_dir : "./", query : vec![Querry::Help], string : ""}, Config::from(&args));
-    }
+    use super::*;
 
     #[test]
-    fn parses_without_any_arguements() {
-        let args = vec![String::from("Lorem")];
-        assert_eq!(Config{
-            current_dir : "Lorem",
-            query : vec![Querry::Help],
-            string : "",
-        }, Config::from(&args));
+    fn just_new() {
+        let config = Config::new();
+        assert!(config.query.help);
+        assert!(!config.query.read);
+        assert!(!config.query.search);
+        assert!(!config.query.find);
+        assert!(!config.query.verbose);
+        assert!(!config.query.quiet);
+        assert!(!config.query.case_sensitive);
     }
 
     #[test]
     #[should_panic]
-    fn literally_no_arguements_were_passed(){
-        assert_eq!(Config::from(&vec![]), Config::new());
+    fn config_from_no_args() {
+        let arg_vec = Vec::new();
+        if let Err(NoArgs) = Config::from(&arg_vec) {
+            panic!();
+        }
     }
+    
+    #[test]
+    fn config_from_too_many_args() {
+        let arg_vec = vec![
+            String::from("/home/.config/something"),
+            String::from("--search"),
+            String::from("--find"),
+        ];
+        if let Err(TooMany) = Config::from(&arg_vec) {
+            panic!();
+        }
+    }
+
+    #[test]
+    fn config_from_smallest_valid_arguement_list() {
+        let arg_vec = vec![
+            String::from("/home/.config/something"),
+            String::from("some.txt"),
+        ];
+
+        let config = Config::from(&arg_vec).unwrap();
+        assert_eq!(config.file, "some.txt"); // fails if there's no such file
+        assert_eq!(config.search_string, "");// becomes some.txt if there's no such file
+        assert!(!config.query.help);
+    }
+
 }
