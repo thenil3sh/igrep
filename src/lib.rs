@@ -34,16 +34,17 @@ impl<'a> Config<'a> {
     }
     pub fn from(args: &'a Vec<String>) -> Result<Self, ErrType<'a>> {
         let mut config: Config<'a> = Self::new();
-        let mut result : Option<ErrType> = None;
+        let mut result = NoArgs;
 
         for i in 1..args.len() {
-            config.push(&args[i]);
-            ////////////
-        } 
+            let x = config.push(&args[i]).unwrap_or(NoArgs);
+            result = match x {
+                TooManyArgs(x) => TooManyArgs(x),
+                NoArgs => NoArgs,
+                UnknownArgs(x) => UnknownArgs(x),
+            };
+        };
 
-        if !result.is_none(){
-            return Err(result.unwrap());
-        }
         if config.query == Query::new() {
             return Err(NoArgs);
         } 
@@ -53,7 +54,7 @@ impl<'a> Config<'a> {
 
     fn push(&mut self, arguement: &'a String) -> Option<ErrType> {
         let query = &mut self.query;
-        let mut args = vec![];
+        let mut args : [&str ; 3] = ["" ; 3];
         match arguement.as_str() {
             "--help"            => query.search = true,
             "--search"          => query.search = true,
@@ -64,7 +65,7 @@ impl<'a> Config<'a> {
             "--read"            => query.read = true,
             x             => {
                 query.help = false;
-                args.push(x);
+                args.push(x.clone());
                 if x.contains("--") {
                     return Some(UnknownArgs(x));
                 } else if exists(x) && self.file.is_empty() {
@@ -73,7 +74,7 @@ impl<'a> Config<'a> {
                     self.search_string = x;
                 } else {
                     query.help = true;
-                    return Some(TooManyArgs(args));
+                    return Some(TooManyArgs([]));
                 }
             }
         }
@@ -95,9 +96,9 @@ impl Query {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ErrType<'a> {
-    TooManyArgs (Vec<&'a str>),
+    TooManyArgs ([&'a str; 3]),
     NoArgs,
     UnknownArgs(&'a str),
 }
