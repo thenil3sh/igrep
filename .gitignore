@@ -1,5 +1,10 @@
+# ide configurations
 *.nix
 .idx
+
+# build files, build 'em yourself (o_o)
 /target
+
+# randoms, idk what
 *.txt
 *.out
