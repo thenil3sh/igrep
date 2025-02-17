@@ -2,3 +2,4 @@
 .idx
 /target
 *.txt
+*.out

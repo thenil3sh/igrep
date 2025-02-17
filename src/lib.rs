@@ -1,15 +1,18 @@
-use std::{fs, path::Path, io::ErrorKind};
+use std::{fs, path::Path, io::{ErrorKind, Error}};
 // use termion::terminal_size;
 use crossterm::terminal::size;
+
+
+
 fn file_exists(path: impl AsRef<Path>) -> bool {
-    Path::new(path.as_ref()).exists()
+    Path::new(path.as_ref()).is_file()
 }
 
 #[derive(Debug)]
 pub struct Config<'a> {
     // current_dir : &'a str,
     query: Query,
-    search_string: Vec<&'a str>,
+    pub search_string: Vec<&'a str>,
     pub file: Vec<&'a str>,
 }
 
@@ -97,64 +100,69 @@ impl<'a> Config<'a> {
         Ok(())
     }
 
-    pub fn run(&'a self, address: &'a str) -> ErrType<'a> {
+    pub fn run(&'a self, address: &'a str) -> (ErrType<'a>, Option<String>) {
         let search_is_on: bool = !self.search_string.is_empty();
-        if file_exists(address) {
-            return if self.query.read && search_is_on {
-                read_and_search(address)
-            } else if search_is_on {
-                search_file(address, &self.search_string)
-            } else if self.query.read {
-                read_file(address)
-            } else {
-                locate_file(address)
-            };
-        } else {
-            return FileNotFound(address);
-        }
-    }
-}
-
-fn search_file <'a> (address : &'a str, search_vector : &Vec<&'a str>) -> ErrType<'a> {
-    let mut searched = String::new();
-    if let Ok(file) = fs::read_to_string(address) {
-        for lines in file.lines() {
-            for elements in search_vector {
-                searched = lines.search_and_highlight(elements);
+        match fs::read(address) {
+            Ok(_) => {
+                (Nothing, Some(
+                if self.query.read && search_is_on {
+                    read_and_search(address, &self.search_string)
+                } else if search_is_on {
+                    search_file(address, &self.search_string)
+                } else if self.query.read {
+                    read_file(address)
+                } else {
+                    locate_file(address)
+                }))
+            }, Err(x) => {
+                (ErrType::from(x, address), None)
             }
-            println!("{searched}");
         }
-    } else if let Err(x) = fs::read(address) {
-        match x {
-            _ => todo!("Handle it with ErrorKind"),
-        }
+        
     }
-    Nothing
 }
 
-fn locate_file (address : &str) -> ErrType {
-    todo!("Just locate this file and print it as if bothing special");
-    Nothing
+fn search_file <'a> (address : &'a str, search_vector : &Vec<&'a str>) -> String {
+    let mut searched = String::new();
+    match fs::read_to_string(address) {
+        Ok(file) => {
+            for line in file.lines() {
+                let mut line = line.to_string();
+                for element in search_vector {
+                    line.search_and_highlight(element);
+                }
+                searched.push_str(&line);
+                searched.push('\n');
+            }
+            searched
+        }, _ => panic!("search_file(&str, &Vec<&str>) fucking panics")
+    }
 }
 
-fn read_and_search (address : &str) -> ErrType {
-    todo!("Read the whole damn file and higlight whats being searched");
-    Nothing
-}
-
-fn read_file<'a>(address: &'a str) -> ErrType<'a> {
-    if let Ok(string) = fs::read_to_string(address) {
-        let (width, _) = size().unwrap();
-        let heading = format!("======[ \x1b[1mFILE : {}\x1b[0m ]", address);//index + 1, address);///////////////// needs attention!!!
-        print!("{heading}");
-        for _i in 0..((width as i32) - (heading.len() as i32) + 5) {
-            print!("=");
-        }
-        println!("\n{string}\n");
+fn locate_file (address : &str) -> String {
+    if file_exists(address) {
+        format!("exists! at address : {address}")
     } else {
-        return FileNotFound(address);
+        panic!("locate_file(&str) fucking panics!")
     }
-    Nothing
+}
+
+fn read_and_search <'a> (address : &'a str, search_vector : &'a Vec<&'a str>) -> String {
+    match fs::read_to_string(address) {
+        Ok(mut string) => {
+            for element in search_vector {
+                string.search_and_highlight(element);
+            }
+            string
+        }, _ => panic!("read_and_search(&str, &Vec<&str> fucking panics"),
+    }
+}
+
+fn read_file <'a> (address: &'a str) -> String {
+    match fs::read_to_string(address) {
+        Ok(string) => string,
+        _ => panic!("read_file(&str) fucking panics"),
+    } 
 }
 
 impl Query {
@@ -178,8 +186,22 @@ pub enum ErrType<'a> {
     NoArgs,
     UnknownArgs(&'a str),
     FileNotFound(&'a str),
+    PermissionDenied,
+    FileInUse(&'a str),
+    UnknownErr,
 }
 use ErrType::*;
+
+impl <'a> ErrType<'a> {
+    fn from (err : Error, address : &'a str) -> Self {
+        match err.kind () {
+            ErrorKind::AddrInUse => FileInUse(address),
+            ErrorKind::NotFound => FileNotFound(address),
+            ErrorKind::PermissionDenied => PermissionDenied,
+            _ => UnknownErr,
+        }
+    }
+}
 
 #[cfg(test)]
 mod config_test {
@@ -260,11 +282,11 @@ mod config_test {
 }
 
 trait Search {
-    fn search_and_highlight(&self, search_element: &str) -> String;
+    fn search_and_highlight(&mut self, search_element: &str);
 }
 
-impl Search for &str {
-    fn search_and_highlight(&self, element: &str) -> String {
+impl Search for String {
+    fn search_and_highlight(&mut self, element: &str){
         let mut colorised_string = String::new();
         let string = self.to_ascii_lowercase();
 
@@ -278,6 +300,7 @@ impl Search for &str {
             start_point = pos + element.len();
         }
         colorised_string.push_str(&self[start_point..]);
-        colorised_string
+        *self  = colorised_string;
     }
 }
+

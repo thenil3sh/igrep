@@ -11,6 +11,18 @@ fn main() {
     };
     
     for i in config.file.iter() {
-        error_list.push(config.run(*i));
+        error_list.push(
+            match config.run(i) {
+                (_, Some(string)) => {
+                    if config.search_string.is_empty() {
+
+                    } else {
+                        
+                    }
+                    ErrType::Nothing
+                },
+                (err, None) => err,
+            } 
+        );
     }
 }
