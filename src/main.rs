@@ -1,5 +1,5 @@
 use std::env;
-use igrep::{Config, ErrType};
+use igrep::{Config, ErrType, ResultHandle};
 
 fn main() {
     let args : Vec<String> = env::args().collect();
@@ -11,15 +11,23 @@ fn main() {
     };
     
     for i in config.file.iter() {
-        result_list.push(
-            todo!("A nice look for help");
-            todo!("A jackass error handling");
-            match config.run(i) {
-                (_, Some(string)) => {
-                    Ok(string)
-                },
-                (errtype, None) => Err(errtype),
-            }
-        );
+        if config.help_is_on() {
+            println!("\x1b[1mHelp needed!\x1b[0m");
+            config.print_help();
+            panic!();
+        } else {
+            result_list.push(
+                match config.run(i) {
+                    (_, Some(string)) => {
+                        Ok(string)
+                    },
+                    (errtype, None) => Err(errtype),
+                }
+            );
+        }
     }
+
+    result_list.handle(&config.file);
 }
+
+

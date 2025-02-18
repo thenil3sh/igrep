@@ -38,9 +38,9 @@ impl<'a> Config<'a> {
     }
     pub fn from(args: &'a Vec<String>) -> Result<Self, ErrType<'a>> {
         let mut config: Config<'a> = Self::new();
-
+        let mut push_to  = 0;
         for i in 1..args.len() {
-            match config.push(&args[i]) {
+            match config.push(&args[i], &mut push_to) {
                 Nothing => continue,
                 x => return Err(x),
             }
@@ -51,27 +51,32 @@ impl<'a> Config<'a> {
         Ok(config)
     }
 
-    fn push(&mut self, arguement: &'a String) -> ErrType<'a> {
+    fn push(&mut self, arguement: &'a String, push_to : &mut u8) -> ErrType<'a> {
         let query = &mut self.query;
 
         match arguement.as_str() {
-            "--help" => query.search = true,
+            "--help" => query.help = true,
             "--case_sensitive" => query.case_sensitive = true,
             "--verbose" => query.verbose = true,
             "--quiet" => query.quiet = true,
             "--read" => query.read = true,
             "--file" => {
                 query.file = true;
-                query.search = false;
-                self.file.clear();
+                if *push_to == 0 {
+                    self.file.clear();
+                }
+                *push_to = 2;
             }
             "--search" => {
                 query.search = true;
-                query.file = false;
-                self.search_string.clear();
+                if *push_to == 0 {
+                    self.search_string.clear();
+                    
+                } 
+                *push_to = 1;
             }
             x => {
-                if let Err(x) = self.parse_str(x) {
+                if let Err(x) = self.parse_str(x, *push_to) {
                     return x;
                 };
             }
@@ -79,24 +84,21 @@ impl<'a> Config<'a> {
         Nothing
     }
 
-    fn parse_str(&mut self, str: &'a str) -> Result<(), ErrType<'a>> {
+    fn parse_str(&mut self, str: &'a str, push_to : u8) -> Result<(), ErrType<'a>> {
         let query = &mut self.query;
-        query.help = false;
         if str.contains("--") {
             return Err(UnknownArgs(str));
-        } else if query.file == !query.search {
-            if query.file {
-                self.file.push(str);
-            } else if query.search {
-                self.search_string.push(str);
-            } else {
-                panic!("bro wtf");
-            }
         } else {
-            self.file.push(str);
-            self.search_string.push(str);
+            if matches!(push_to, 0 | 2) {
+                self.file.push(str);
+                query.file = true;
+            }
+            if matches!(push_to, 0 | 1) {
+                self.search_string.push(str);
+                query.search = true;
+            }
         }
-        self.query.file = true;
+        // self.query.file = true;
         Ok(())
     }
 
@@ -121,23 +123,27 @@ impl<'a> Config<'a> {
     }
 
     pub fn search_is_on(&self) -> bool {
+        println!("search is on");
         return !self.search_string.is_empty();
     }
 
     pub fn file_is_on(&self) -> bool {
+        println!("file is on");
         self.query.file
     }
 
     pub fn reading_is_on(&self) -> bool {
+        println!("reading is on");
         self.query.read
     }
 
     pub fn help_is_on(&self) -> bool {
+        println!("help is on");
         self.query.help
     }
 
-    fn print_help()  {
-
+    pub fn print_help(&self) {
+        panic!();
     }
 }
 
@@ -145,13 +151,19 @@ fn search_file <'a> (address : &'a str, search_vector : &Vec<&'a str>) -> String
     let mut searched = String::new();
     match fs::read_to_string(address) {
         Ok(file) => {
-            for line in file.lines() {
+            for (line_number, line) in file.lines().enumerate() {
                 let mut line = line.to_string();
+                let mut element_found = false;
                 for element in search_vector {
-                    line.search_and_highlight(element);
+                    if line.contains(element) {
+                        element_found = true;
+                        line.search_and_highlight(element);
+                    }
                 }
-                searched.push_str(&line);
-                searched.push('\n');
+                if element_found {
+                    let str = format!("{line_number} | {line}\n");
+                    searched.push_str(&str);
+                }
             }
             searched
         }, _ => panic!("search_file(&str, &Vec<&str>) fucking panics")
@@ -187,7 +199,7 @@ fn read_file <'a> (address: &'a str) -> String {
 impl Query {
     fn new() -> Self {
         Self {
-            help: true,
+            help: false,
             read: false,
             search: false,
             file: false,
@@ -206,7 +218,7 @@ pub enum ErrType<'a> {
     UnknownArgs(&'a str),
     FileNotFound(&'a str),
     NeedHelp,
-    PermissionDenied,
+    PermissionDenied(&'a str),
     FileInUse(&'a str),
     UnknownErr,
 }
@@ -217,7 +229,7 @@ impl <'a> ErrType<'a> {
         match err.kind () {
             ErrorKind::AddrInUse => FileInUse(address),
             ErrorKind::NotFound => FileNotFound(address),
-            ErrorKind::PermissionDenied => PermissionDenied,
+            ErrorKind::PermissionDenied => PermissionDenied(address),
             _ => UnknownErr,
         }
     }
@@ -324,3 +336,56 @@ impl Search for String {
     }
 }
 
+pub trait ResultHandle {
+    fn handle(&self, config : &[&str]);
+}
+
+impl <'a> ResultHandle for Vec<Result<String, ErrType<'a>>> {
+    fn handle(& self, file_arr : &[&str]) {
+        let mut err_count : u32 = 0;
+        for (file_count, result) in self.iter().enumerate() {
+            match result {
+                Ok(string) => {
+                    print_heading(file_count, file_arr[file_count]);
+                    println!("{string}");
+                } _ => err_count += 1,
+            }
+        }
+
+        if err_count == 0 {
+            std::process::exit(0);
+        } else if err_count == 1 {
+            print!("\x1b[31m[ERROR]\x1b[0m ");
+        } else if err_count > 1 {
+            println!("\x1b[31mFollowing errors were encountered :\x1b[0m");
+        }
+        for (file_count, result) in self.iter().enumerate() {
+            match result {
+                Err(err_type) => print_error(file_count,err_type),
+                _ => {},
+            }
+        }
+        std::process::exit(1);
+    }
+}
+
+fn print_heading (file_number : usize, address : &str) {
+    let (width, _) = size().unwrap();
+    let mut heading = format!("=====[ FILE {file_number} : {address} ]");
+    for _i in heading.len()..(width as usize) {
+        heading.push('=');
+    }
+    println!("{heading}");
+}
+
+fn print_error(file_count : usize, result : &ErrType) {
+    match result {
+        &NoArgs => println!("Expected arguements, nothing was given"),
+        &TooManyArgs => println!("Too many arguements"),
+        &UnknownArgs(arg) => println!("Unknown arguement : '{arg}'"),
+        &FileNotFound(add) => println!("\x1b[33m[FILE : {file_count}] \x1b[0m\x1b[0m{add} : file doesn't exist"),
+        &PermissionDenied(add) => println!("\x1b[33m[FILE : {file_count}] \x1b[0m\x1b[0m{add} : permission denied"),
+        &FileInUse(add) => println!("\x1b[33m[FILE : {file_count}] \x1b[0m\x1b[0m{add} : file is already in use"),
+        _ => println!("\x1b[33m[FILE : {file_count}] \x1b[0m\x1b[0mUnknown error occured"),
+    }
+}
