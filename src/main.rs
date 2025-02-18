@@ -3,26 +3,23 @@ use igrep::{Config, ErrType};
 
 fn main() {
     let args : Vec<String> = env::args().collect();
-    let mut error_list = vec![];
+    let mut result_list: Vec<Result<String, ErrType>> = vec![];
     let mut config = Config::new();
     match Config::from(&args) {
         Ok (x) => config = x,
-        Err(x) => error_list.push(x),
+        Err(x) => result_list.push(Err(x)),
     };
     
     for i in config.file.iter() {
-        error_list.push(
+        result_list.push(
+            todo!("A nice look for help");
+            todo!("A jackass error handling");
             match config.run(i) {
                 (_, Some(string)) => {
-                    if config.search_string.is_empty() {
-
-                    } else {
-                        
-                    }
-                    ErrType::Nothing
+                    Ok(string)
                 },
-                (err, None) => err,
-            } 
+                (errtype, None) => Err(errtype),
+            }
         );
     }
 }

@@ -12,7 +12,7 @@ fn file_exists(path: impl AsRef<Path>) -> bool {
 pub struct Config<'a> {
     // current_dir : &'a str,
     query: Query,
-    pub search_string: Vec<&'a str>,
+    search_string: Vec<&'a str>,
     pub file: Vec<&'a str>,
 }
 
@@ -101,15 +101,14 @@ impl<'a> Config<'a> {
     }
 
     pub fn run(&'a self, address: &'a str) -> (ErrType<'a>, Option<String>) {
-        let search_is_on: bool = !self.search_string.is_empty();
         match fs::read(address) {
             Ok(_) => {
                 (Nothing, Some(
-                if self.query.read && search_is_on {
+                if self.reading_is_on() && self.search_is_on() {
                     read_and_search(address, &self.search_string)
-                } else if search_is_on {
+                } else if self.search_is_on() {
                     search_file(address, &self.search_string)
-                } else if self.query.read {
+                } else if self.reading_is_on() {
                     read_file(address)
                 } else {
                     locate_file(address)
@@ -119,6 +118,26 @@ impl<'a> Config<'a> {
             }
         }
         
+    }
+
+    pub fn search_is_on(&self) -> bool {
+        return !self.search_string.is_empty();
+    }
+
+    pub fn file_is_on(&self) -> bool {
+        self.query.file
+    }
+
+    pub fn reading_is_on(&self) -> bool {
+        self.query.read
+    }
+
+    pub fn help_is_on(&self) -> bool {
+        self.query.help
+    }
+
+    fn print_help()  {
+
     }
 }
 
@@ -186,6 +205,7 @@ pub enum ErrType<'a> {
     NoArgs,
     UnknownArgs(&'a str),
     FileNotFound(&'a str),
+    NeedHelp,
     PermissionDenied,
     FileInUse(&'a str),
     UnknownErr,
